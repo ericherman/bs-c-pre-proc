@@ -19,4 +19,6 @@ unsigned check_expression(const char *file, int line, const char *func,
 
 int failures_to_status(const char *name, unsigned failures);
 
+char *ignore_const_s(const char *str);
+
 #endif /* #ifndef TEST_UTIL_H */

@@ -56,3 +56,16 @@ unsigned check_expression(const char *file, int line, const char *func,
 
 	return 1;
 }
+
+#if __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
+#endif
+char *ignore_const_s(const char *str)
+{
+	return (char *)(str);
+}
+
+#if __GNUC__
+#pragma GCC diagnostic pop
+#endif

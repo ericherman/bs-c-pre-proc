@@ -25,7 +25,13 @@ DEBUG_CFLAGS += -DDEBUG -O0 $(COMMON_CFLAGS) \
 
 SHELL=/bin/bash
 
-VALGRIND=$(shell which valgrind)
+ifeq ($(VALGRIND),)
+VALGRIND=0
+endif
+
+ifneq ($(VALGRIND), 0)
+VALGRIND_CMD=$(shell which valgrind)
+endif
 
 # extracted from https://github.com/torvalds/linux/blob/master/scripts/Lindent
 LINDENT=indent -npro -kr -i8 -ts8 -sob -l80 -ss -ncs -cp1 -il0
@@ -53,21 +59,18 @@ debug/test-util.o: tests/test-util.c tests/test-util.h
 	mkdir -pv debug
 	$(CC) -c $(DEBUG_CFLAGS) $< -o $@
 
-debug/test-simple-include: debug/bs-cpp.o debug/test-util.o \
-		tests/test-simple-include.c
+debug/test-%: debug/bs-cpp.o debug/test-util.o tests/test-%.c
 	$(CC) $(DEBUG_CFLAGS) $^ -o $@
 
-.PHONY: check-simple-include
-check-simple-include: debug/test-simple-include
-	$(VALGRIND) ./$< > debug/$@.out 2>&1
-	if [ $$(grep -c 'definitely lost' debug/$@.out) -eq 0 ]; \
-			then true; else cat debug/$@.out && false; fi && \
-		if [ $$(grep -c 'probably lost' debug/$@.out) -eq 0 ]; \
-			then true; else cat debug/$@.out && false; fi
+.PHONY: check-%
+check-%: debug/test-%
+	$(VALGRIND_CMD) ./$< 2>&1 | tee debug/$@.out
+	bin/valgrind-check debug/$@.out
+	rm debug/$@.out
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check-unit
-check-unit: check-simple-include
+check-unit: check-simple-include check-name-from-include
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check-accpetance
@@ -77,7 +80,7 @@ check-accpetance: build/bs-cpp debug/bs-cpp tests/acceptance-1.sh
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check
-check: check-simple-include check-accpetance
+check: check-unit check-accpetance
 	@echo "SUCCESS! ($@)"
 
 coverage.info: check

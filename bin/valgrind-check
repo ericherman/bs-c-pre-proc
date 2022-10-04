@@ -1,0 +1,24 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022 Eric Herman <eric@freesa.org>
+
+VALGRIND_OUTPUT=$1
+if [ "_${VALGRIND_OUTPUT}_" == "__" ]; then
+	echo "must specify output file"
+	exit 1
+fi
+
+if [ ! -f ${VALGRIND_OUTPUT} ]; then
+	ls ${VALGRIND_OUTPUT}
+	exit 1
+fi
+
+if [ $(grep -c 'definitely lost' $VALGRIND_OUTPUT) -ne 0 ]; then
+	cat $VALGRIND_OUTPUT
+	exit 1
+fi
+
+if [ $(grep -c 'probably lost' $VALGRIND_OUTPUT) -ne 0 ]; then
+	cat $VALGRIND_OUT
+	exit 1
+fi

@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022 Eric Herman <eric@freesa.org>
 
 BS_CPP=$1
 

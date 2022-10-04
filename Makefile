@@ -71,8 +71,9 @@ check-unit: check-simple-include
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check-accpetance
-check-accpetance: debug/bs-cpp tests/acceptance-1.sh
+check-accpetance: build/bs-cpp debug/bs-cpp tests/acceptance-1.sh
 	tests/acceptance-1.sh debug/bs-cpp
+	tests/acceptance-1.sh build/bs-cpp
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check

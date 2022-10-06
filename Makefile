@@ -70,7 +70,7 @@ check-%: debug/test-%
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check-unit
-check-unit: check-simple-include check-name-from-include
+check-unit: check-simple-include check-name-from-include check-sane-fprintf
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check-accpetance

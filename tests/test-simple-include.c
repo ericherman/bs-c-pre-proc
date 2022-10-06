@@ -167,7 +167,6 @@ unsigned test_simple_include_include(void)
 			  "expected: '%s'\n"
 			  " but was: '%s'\n", baz_txt, outbuf);
 
-
 	bs_fopen = fopen;
 	bs_fclose = fclose;
 

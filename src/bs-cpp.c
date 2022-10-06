@@ -1,4 +1,8 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2022 Eric Herman <eric@freesa.org> */
+
 #include <limits.h>
+#include <stdarg.h>
 
 #include <assert.h>
 #include <stdio.h>
@@ -20,11 +24,15 @@ FILE *(*bs_fopen)(const char *restrict path, const char *restrict mode) = fopen;
 int (*bs_fclose)(FILE *stream) = fclose;
 void *(*bs_malloc)(size_t size) = malloc;
 void (*bs_free)(void *ptr) = free;
+void (*bs_exit)(int status) = exit;
+int (*bs_vfprintf)(FILE *restrict stream, const char *restrict format,
+		   va_list ap) = vfprintf;
 
 /* local prototypes, not static for testing */
+size_t sane_fprintf(FILE *stream, size_t max, FILE *err, const char *fmt, ...);
+int bs_include(FILE *out, char *buf, size_t bufsize, size_t offset, FILE *log);
 char *bs_name_from_include(char *buf, char start_delim, char until_delim,
 			   char **name_end, FILE *log);
-int bs_include(FILE *out, char *buf, size_t bufsize, size_t offset, FILE *log);
 
 int bs_preprocess(FILE *in, FILE *out, char *buf, size_t bufsize, FILE *log)
 {
@@ -59,12 +67,9 @@ int bs_preprocess(FILE *in, FILE *out, char *buf, size_t bufsize, FILE *log)
 				return error;
 			}
 		} else {
-			int written = fprintf(out, "%s", buf);
-			if (written < 0 || ((size_t)written) >= bufsize) {
-				fprintf(log, "fprintf returned %d\n", written);
-				return 2;
-			}
-			if ((((size_t)written) == (bufsize - 1))
+			size_t written;
+			written = sane_fprintf(out, bufsize, log, "%s", buf);
+			if ((written == (bufsize - 1))
 			    && (buf[bufsize - 1] != '\n')) {
 				continue_long_line = 1;
 			} else {
@@ -122,6 +127,22 @@ char *bs_name_from_include(char *buf, char start_delim, char until_delim,
 		name += 1;
 	}
 	return name;
+}
+
+size_t sane_fprintf(FILE *stream, size_t max, FILE *err, const char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	int written = bs_vfprintf(stream, fmt, args);
+	va_end(args);
+
+	if (written < 0 || ((size_t)written) >= max) {
+		fprintf(err, "fprintf returned %d\n", written);
+		bs_exit(2);
+	}
+
+	return ((size_t)written);
 }
 
 int bs_cpp(int argc, char **argv)

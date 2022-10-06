@@ -21,54 +21,10 @@ int (*bs_fclose)(FILE *stream) = fclose;
 void *(*bs_malloc)(size_t size) = malloc;
 void (*bs_free)(void *ptr) = free;
 
+/* local prototypes, not static for testing */
 char *bs_name_from_include(char *buf, char start_delim, char until_delim,
-			   char **name_end, FILE *log)
-{
-	assert(name_end);
-
-	char *name = strchr(buf + strlen("#include") + 1, start_delim);
-	if (name) {
-		*name_end = strchr(name + 1, until_delim);
-		if (!*name_end) {
-			fprintf(log, "parse error"
-				" #include has unbalanced quotes."
-				" Opening quote but no close with: "
-				" %s\n", buf);
-			return NULL;
-		}
-		// skip the quote
-		name += 1;
-	}
-	return name;
-}
-
-int bs_include(FILE *out, char *buf, size_t bufsize, size_t offset, FILE *log)
-{
-	char *name, *name_end;
-	char delim1 = '"';
-	char delim2 = '"';
-	char *from = buf + offset;
-	name = bs_name_from_include(from, delim1, delim2, &name_end, log);
-	if (!name) {
-		return 1;
-	}
-	// we will not process anything more on this line
-	// NULL-terminate the string, so we can use it for the
-	// path for fopen.
-	*name_end = '\0';
-
-	FILE *include = bs_fopen(name, "r");
-	if (!include) {
-		fprintf(log, "File not found: '%s'.\n", name);
-		return 1;
-	}
-
-	buf[0] = '\0';
-	int error = bs_preprocess(include, out, buf, bufsize, log);
-	bs_fclose(include);
-
-	return error;
-}
+			   char **name_end, FILE *log);
+int bs_include(FILE *out, char *buf, size_t bufsize, size_t offset, FILE *log);
 
 int bs_preprocess(FILE *in, FILE *out, char *buf, size_t bufsize, FILE *log)
 {
@@ -117,6 +73,55 @@ int bs_preprocess(FILE *in, FILE *out, char *buf, size_t bufsize, FILE *log)
 		}
 	}
 	return 0;
+}
+
+int bs_include(FILE *out, char *buf, size_t bufsize, size_t offset, FILE *log)
+{
+	char *name, *name_end;
+	char delim1 = '"';
+	char delim2 = '"';
+	char *from = buf + offset;
+	name = bs_name_from_include(from, delim1, delim2, &name_end, log);
+	if (!name) {
+		return 1;
+	}
+	// we will not process anything more on this line
+	// NULL-terminate the string, so we can use it for the
+	// path for fopen.
+	*name_end = '\0';
+
+	FILE *include = bs_fopen(name, "r");
+	if (!include) {
+		fprintf(log, "File not found: '%s'.\n", name);
+		return 1;
+	}
+
+	buf[0] = '\0';
+	int error = bs_preprocess(include, out, buf, bufsize, log);
+	bs_fclose(include);
+
+	return error;
+}
+
+char *bs_name_from_include(char *buf, char start_delim, char until_delim,
+			   char **name_end, FILE *log)
+{
+	assert(name_end);
+
+	char *name = strchr(buf + strlen("#include") + 1, start_delim);
+	if (name) {
+		*name_end = strchr(name + 1, until_delim);
+		if (!*name_end) {
+			fprintf(log, "parse error"
+				" #include has unbalanced quotes."
+				" Opening quote but no close with: "
+				" %s\n", buf);
+			return NULL;
+		}
+		// skip the quote
+		name += 1;
+	}
+	return name;
 }
 
 int bs_cpp(int argc, char **argv)

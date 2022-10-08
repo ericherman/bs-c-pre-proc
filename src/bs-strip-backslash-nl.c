@@ -1,31 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Copyright (C) 2022 Eric Herman <eric@freesa.org> */
 
-#include <stdarg.h>
 #include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <sys/types.h>
 #include <string.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <sys/wait.h>
+#include <unistd.h>
 
-/* prototypes */
-typedef int (*bs_pipe_function)(int fd_from, int fd_to, FILE *errlog);
+#include "bs-util.h"
 
-int bs_log_error(int perrno, const char *file, int line, FILE *errlog,
-		 const char *format, ...);
-#define Bs_log_errno(errlog, format, ...) \
-	bs_log_error(errno, __FILE__, __LINE__, \
-		     errlog, format __VA_OPT__(,) __VA_ARGS__)
-
-int bs_pipe_paths(bs_pipe_function * pfunc, const char *in_path,
-		  const char *out_path, FILE *errlog);
-int bs_pipe(bs_pipe_function * pfunc, int fdin, int fdout, FILE *errlog);
-int bs_fd_copy(int fd_from, int fd_to, char *buf, size_t bufsize, FILE *errlog);
-
-/* definitions */
 int bs_strip_backslash_newline(int fd_from, int fd_to, FILE *errlog)
 {
 	const size_t bufsize = sizeof(size_t) + 1;
@@ -153,10 +134,8 @@ int bs_replace_comments(int fd_from, int fd_to, FILE *errlog)
 		} else if (c == '/') {
 			have_slash = 1;
 		}
-		if (!(have_slash
-		      || have_double_slash
-		      || have_slash_star_star || have_slash_star || skip)
-		    ) {
+		if (!(skip || have_slash || have_double_slash
+		      || have_slash_star_star || have_slash_star)) {
 			buf[0] = c;
 			buf[1] = '\0';
 			write(fd_to, buf, 1);
@@ -172,121 +151,6 @@ bs_replace_comments_end:
 	close(fd_from);
 
 	return error;
-}
-
-/* utility functions */
-int bs_fd_copy(int fd_from, int fd_to, char *buf, size_t bufsize, FILE *errlog)
-{
-	ssize_t bytes = 0;
-	while ((bytes = read(fd_from, buf, bufsize)) != 0) {
-		if (bytes < 0) {
-			const char *fmt = "read(%d, buf, %zu) returned %zd";
-			int save_errno =
-			    Bs_log_errno(errlog, fmt, fd_from, bufsize, bytes);
-			return save_errno ? save_errno : 1;
-		}
-		write(fd_to, buf, bytes);
-	}
-	close(fd_from);
-	return 0;
-}
-
-int bs_pipe(bs_pipe_function * pfunc, int fdin, int fdout, FILE *errlog)
-{
-	pid_t child_pid = 0;
-	int piperead;
-	int pipewrite;
-	int incoming = fdin;
-
-	for (size_t i = 0; pfunc[i]; ++i) {
-		int pipefd[2];
-		pipe(pipefd);
-
-		piperead = pipefd[0];
-		pipewrite = pipefd[1];
-
-		if ((child_pid = fork()) == -1) {
-			const char *fmt = "fork() number %zu returned -1";
-			int save_errno = Bs_log_errno(errlog, fmt, i);
-			return save_errno ? save_errno : 1;
-		}
-
-		if (child_pid == 0) {
-			/* not using the "out" end of pipe */
-			close(piperead);
-
-			/* not using "fdout" */
-			close(fdout);
-
-			return pfunc[i] (incoming, pipewrite, errlog);
-		}
-
-		/* not using incoming */
-		close(incoming);
-
-		/* not using input end of pipe */
-		close(pipewrite);
-
-		incoming = piperead;
-	}
-
-	const size_t bufsize = 80;
-	char buf[80];
-	int err2 = bs_fd_copy(incoming, fdout, buf, bufsize, errlog);
-
-	int options = 0;
-	int err1 = 0;
-	waitpid(child_pid, &err1, options);
-	return (err1 > err2) ? err1 : err2;
-}
-
-int bs_pipe_paths(bs_pipe_function * pfunc, const char *in_path,
-		  const char *out_path, FILE *errlog)
-{
-	int fdin = open(in_path, O_RDONLY);
-	if (fdin < 0) {
-		const char *fmt = "open(\"%s\", O_RDONLY) returned %d";
-		int save_errno = Bs_log_errno(errlog, fmt, in_path, fdin);
-		return save_errno ? save_errno : 1;
-	}
-
-	mode_t mode = 0664;
-	int fdout = open(out_path, O_CREAT | O_WRONLY | O_TRUNC, mode);
-	if (fdin < 0) {
-		const char *fmt =
-		    "open(\"%s\", O_CREAT|O_WRONLY|O_TRUNC) returned %d";
-		int save_errno = Bs_log_errno(errlog, fmt, out_path, fdout);
-		return save_errno ? save_errno : 1;
-	}
-
-	int err = bs_pipe(pfunc, fdin, fdout, errlog);
-
-	/* done with fdout */
-	close(fdout);
-
-	return err;
-}
-
-int bs_log_error(int perrno, const char *file, int line, FILE *errlog,
-		 const char *format, ...)
-{
-	fflush(stdout);
-
-	fprintf(errlog, "%s:%d: ", file, line);
-
-	va_list args;
-	va_start(args, format);
-	vfprintf(errlog, format, args);
-	va_end(args);
-
-	if (perrno) {
-		const char *errstr = strerror(perrno);
-		fprintf(errlog, " (errno: %d, %s)", perrno, errstr);
-	}
-
-	fprintf(errlog, "\n");
-
-	return perrno;
 }
 
 int main(int argc, char **argv)

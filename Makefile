@@ -47,6 +47,7 @@ LINDENT=indent -npro -kr -i8 -ts8 -sob -l80 -ss -ncs -cp1 -il0
 default: check
 
 src/bs-cpp.c: src/bs-cpp.h
+src/bs-util.c: src/bs-util.h
 tests/test-util.c: tests/test-util.h
 
 build/bs-cpp: src/bs-cpp.c src/bs-cpp-main.c
@@ -57,15 +58,19 @@ debug/bs-cpp.o: src/bs-cpp.c
 	mkdir -pv debug
 	$(CC) -c $(DEBUG_CFLAGS) $< -o $@
 
+debug/bs-util.o: src/bs-util.c
+	mkdir -pv debug
+	$(CC) -c $(DEBUG_CFLAGS) $< -o $@
+
 debug/bs-cpp: debug/bs-cpp.o src/bs-cpp-main.c
 	mkdir -pv debug
 	$(CC) $(DEBUG_CFLAGS) $^ -o $@
 
-build/bs-strip-backslash-nl: src/bs-strip-backslash-nl.c
+build/bs-strip-backslash-nl: src/bs-strip-backslash-nl.c src/bs-util.c
 	mkdir -pv debug
 	$(CC) $(BUILD_CFLAGS) $^ -o $@
 
-debug/bs-strip-backslash-nl: src/bs-strip-backslash-nl.c
+debug/bs-strip-backslash-nl: src/bs-strip-backslash-nl.c debug/bs-util.o
 	mkdir -pv debug
 	$(CC) $(DEBUG_CFLAGS) $^ -o $@
 
@@ -137,6 +142,8 @@ coverage: coverage_html/src/index.html
 tidy:
 	$(LINDENT) \
 		-T FILE -T size_t -T ssize_t \
+		-T mode_t -T pid_t \
+		-T bs_pipe_function \
 		src/*.c src/*.h tests/*.c tests/*.h
 
 clean:

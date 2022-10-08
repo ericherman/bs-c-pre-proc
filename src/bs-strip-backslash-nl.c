@@ -20,9 +20,9 @@ int bs_log_error(int perrno, const char *file, int line, FILE *errlog,
 	bs_log_error(errno, __FILE__, __LINE__, \
 		     errlog, format __VA_OPT__(,) __VA_ARGS__)
 
-int bs_pipe_paths(bs_pipe_function pfunc, const char *in_path,
+int bs_pipe_paths(bs_pipe_function * pfunc, const char *in_path,
 		  const char *out_path, FILE *errlog);
-int bs_pipe(bs_pipe_function pfunc, int fdin, int fdout, FILE *errlog);
+int bs_pipe(bs_pipe_function * pfunc, int fdin, int fdout, FILE *errlog);
 int bs_fd_copy(int fd_from, int fd_to, char *buf, size_t bufsize, FILE *errlog);
 
 /* definitions */
@@ -87,14 +87,102 @@ bs_strip_backslash_newline_end:
 	return error;
 }
 
+int bs_replace_comments(int fd_from, int fd_to, FILE *errlog)
+{
+	const size_t bufsize = sizeof(size_t) + 1;
+	char buf[sizeof(size_t) + 1];
+	memset(buf, 0x00, bufsize);
+
+	int have_slash = 0;
+	int have_double_slash = 0;
+	int have_slash_star = 0;
+	int have_slash_star_star = 0;
+	int skip = 0;
+	int error = 0;
+
+	while (1) {
+		size_t read_size = 1;
+		ssize_t bytes = read(fd_from, buf, read_size);
+		if (bytes < 0) {
+			const char *fmt = "read(fd, buf, %zu) returned %zd";
+			int save_errno =
+			    Bs_log_errno(errlog, fmt, read_size, bytes);
+			error = save_errno ? save_errno : 1;
+			goto bs_replace_comments_end;
+		}
+		if (!bytes) {
+			if (have_slash) {
+				buf[0] = '/';
+				buf[1] = '\0';
+				write(fd_to, buf, 1);
+			}
+			goto bs_replace_comments_end;
+		}
+
+		char c = buf[0];
+		if (have_slash) {
+			char d;
+			if (c == '/') {
+				have_double_slash = 1;
+				d = ' ';
+			} else if (c == '*') {
+				have_slash_star = 1;
+				d = ' ';
+			} else {
+				d = '/';
+			}
+			buf[0] = d;
+			buf[1] = '\0';
+			write(fd_to, buf, 1);
+			have_slash = 0;
+		}
+		if (have_double_slash) {
+			if (c == '\n') {
+				have_double_slash = 0;
+			}
+		} else if (have_slash_star_star) {
+			if (c == '/') {
+				have_slash_star_star = 0;
+				skip = 1;
+			}
+		} else if (have_slash_star) {
+			if (c == '*') {
+				have_slash_star = 0;
+				have_slash_star_star = 1;
+			}
+		} else if (c == '/') {
+			have_slash = 1;
+		}
+		if (!(have_slash
+		      || have_double_slash
+		      || have_slash_star_star || have_slash_star || skip)
+		    ) {
+			buf[0] = c;
+			buf[1] = '\0';
+			write(fd_to, buf, 1);
+		}
+		skip = 0;
+	}
+
+bs_replace_comments_end:
+	/* done with "out" end of pipe */
+	close(fd_to);
+
+	/* done with "fd_from" */
+	close(fd_from);
+
+	return error;
+}
+
 /* utility functions */
 int bs_fd_copy(int fd_from, int fd_to, char *buf, size_t bufsize, FILE *errlog)
 {
 	ssize_t bytes = 0;
 	while ((bytes = read(fd_from, buf, bufsize)) != 0) {
 		if (bytes < 0) {
-			const char *fmt = "read returned %zd";
-			int save_errno = Bs_log_errno(errlog, fmt, bytes);
+			const char *fmt = "read(%d, buf, %zu) returned %zd";
+			int save_errno =
+			    Bs_log_errno(errlog, fmt, fd_from, bufsize, bytes);
 			return save_errno ? save_errno : 1;
 		}
 		write(fd_to, buf, bytes);
@@ -103,48 +191,56 @@ int bs_fd_copy(int fd_from, int fd_to, char *buf, size_t bufsize, FILE *errlog)
 	return 0;
 }
 
-int bs_pipe(bs_pipe_function pfunc, int fdin, int fdout, FILE *errlog)
+int bs_pipe(bs_pipe_function * pfunc, int fdin, int fdout, FILE *errlog)
 {
-	int pipefd[2];
-	pid_t child_pid;
-	pipe(pipefd);
+	pid_t child_pid = 0;
+	int piperead;
+	int pipewrite;
+	int incoming = fdin;
 
-	int piperead = pipefd[0];
-	int pipewrite = pipefd[1];
+	for (size_t i = 0; pfunc[i]; ++i) {
+		int pipefd[2];
+		pipe(pipefd);
 
-	if ((child_pid = fork()) == -1) {
-		const char *fmt = "fork() returned %zd";
-		int save_errno = Bs_log_errno(errlog, fmt, (ssize_t)child_pid);
-		return save_errno ? save_errno : 1;
+		piperead = pipefd[0];
+		pipewrite = pipefd[1];
+
+		if ((child_pid = fork()) == -1) {
+			const char *fmt = "fork() number %zu returned -1";
+			int save_errno = Bs_log_errno(errlog, fmt, i);
+			return save_errno ? save_errno : 1;
+		}
+
+		if (child_pid == 0) {
+			/* not using the "out" end of pipe */
+			close(piperead);
+
+			/* not using "fdout" */
+			close(fdout);
+
+			return pfunc[i] (incoming, pipewrite, errlog);
+		}
+
+		/* not using incoming */
+		close(incoming);
+
+		/* not using input end of pipe */
+		close(pipewrite);
+
+		incoming = piperead;
 	}
-
-	if (child_pid == 0) {
-		/* not using the "out" end of pipe */
-		close(piperead);
-
-		/* not using the fdout */
-		close(fdout);
-
-		return pfunc(fdin, pipewrite, errlog);
-	}
-
-	/* not using fdin */
-	close(fdin);
-
-	/* not using input end of pipe */
-	close(pipewrite);
 
 	const size_t bufsize = 80;
 	char buf[80];
-	int err2 = bs_fd_copy(piperead, fdout, buf, bufsize, errlog);
+	int err2 = bs_fd_copy(incoming, fdout, buf, bufsize, errlog);
 
 	int options = 0;
 	int err1 = 0;
 	waitpid(child_pid, &err1, options);
-	return (err1 || err2) ? 1 : 0;
+	return (err1 > err2) ? err1 : err2;
 }
 
-int bs_pipe_paths(bs_pipe_function pfunc, const char *in_path,
+int bs_pipe_paths(bs_pipe_function * pfunc, const char *in_path,
 		  const char *out_path, FILE *errlog)
 {
 	int fdin = open(in_path, O_RDONLY);
@@ -202,7 +298,13 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	int err = bs_pipe_paths(bs_strip_backslash_newline, in, out, stderr);
+	bs_pipe_function transforms[3] = {
+		bs_strip_backslash_newline,
+		bs_replace_comments,
+		NULL
+	};
+
+	int err = bs_pipe_paths(transforms, in, out, stderr);
 
 	/* if err is a 1-byte value, we can return it raw,
 	 * to avoid a value like 0x0100 looking like SUCCESS

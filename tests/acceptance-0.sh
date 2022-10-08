@@ -17,19 +17,22 @@ BS_EXE_EXPECT=${BS_EXE_OUT}.execpt
 rm -f $BS_EXE_IN $BS_EXE_OUT $BS_EXE_EXPECT
 
 cat << EOF > $BS_EXE_IN
-#defi\
+/*
+*/#/* */defi\
 ne FORTY_\
 TWO 4\
 2
-int main(void)
+int // foo
+main(void)
 {
 	return FORTY_TWO;
 }
 EOF
 
 cat << EOF > $BS_EXE_EXPECT
-#define FORTY_TWO 42
-int main(void)
+ # define FORTY_TWO 42
+int  
+main(void)
 {
 	return FORTY_TWO;
 }

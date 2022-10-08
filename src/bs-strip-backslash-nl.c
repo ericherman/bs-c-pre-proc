@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Copyright (C) 2022 Eric Herman <eric@freesa.org> */
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -10,7 +11,22 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 
-int strip_backslash_newline(int fd_from, int fd_to, FILE *errlog)
+/* prototypes */
+typedef int (*bs_pipe_function)(int fd_from, int fd_to, FILE *errlog);
+
+int bs_log_error(int perrno, const char *file, int line, FILE *errlog,
+		 const char *format, ...);
+#define Bs_log_errno(errlog, format, ...) \
+	bs_log_error(errno, __FILE__, __LINE__, \
+		     errlog, format __VA_OPT__(,) __VA_ARGS__)
+
+int bs_pipe_paths(bs_pipe_function pfunc, const char *in_path,
+		  const char *out_path, FILE *errlog);
+int bs_pipe(bs_pipe_function pfunc, int fdin, int fdout, FILE *errlog);
+int bs_fd_copy(int fd_from, int fd_to, char *buf, size_t bufsize, FILE *errlog);
+
+/* definitions */
+int bs_strip_backslash_newline(int fd_from, int fd_to, FILE *errlog)
 {
 	const size_t bufsize = sizeof(size_t) + 1;
 	char buf[sizeof(size_t) + 1];
@@ -24,14 +40,11 @@ int strip_backslash_newline(int fd_from, int fd_to, FILE *errlog)
 		size_t read_size = 1;
 		ssize_t bytes = read(fd_from, buf, read_size);
 		if (bytes < 0) {
-			int save_errno = errno;
-			const char *errstr = strerror(save_errno);
-			fprintf(errlog, "%s:%d: ", __FILE__, __LINE__);
-			fprintf(errlog, "read(fd, buf, %zu)"
-				" returned %zd, errno %d, %s\n",
-				read_size, bytes, save_errno, errstr);
-			error = 1;
-			goto strip_backslash_newline_end;
+			const char *fmt = "read(fd, buf, %zu) returned %zd";
+			int save_errno =
+			    Bs_log_errno(errlog, fmt, read_size, bytes);
+			error = save_errno ? save_errno : 1;
+			goto bs_strip_backslash_newline_end;
 		}
 		if (!bytes) {
 			if (have_backslash) {
@@ -39,7 +52,7 @@ int strip_backslash_newline(int fd_from, int fd_to, FILE *errlog)
 				buf[1] = '\0';
 				write(fd_to, buf, 1);
 			}
-			goto strip_backslash_newline_end;
+			goto bs_strip_backslash_newline_end;
 		}
 
 		char c = buf[0];
@@ -64,7 +77,7 @@ int strip_backslash_newline(int fd_from, int fd_to, FILE *errlog)
 		}
 	}
 
-strip_backslash_newline_end:
+bs_strip_backslash_newline_end:
 	/* done with "out" end of pipe */
 	close(fd_to);
 
@@ -74,19 +87,15 @@ strip_backslash_newline_end:
 	return error;
 }
 
-int fd_read_write(int fd_from, int fd_to, char *buf, size_t bufsize,
-		  FILE *errlog)
+/* utility functions */
+int bs_fd_copy(int fd_from, int fd_to, char *buf, size_t bufsize, FILE *errlog)
 {
 	ssize_t bytes = 0;
 	while ((bytes = read(fd_from, buf, bufsize)) != 0) {
 		if (bytes < 0) {
-			int save_errno = errno;
-			const char *errstr = strerror(save_errno);
-			fprintf(errlog, "%s:%d: ", __FILE__, __LINE__);
-			fprintf(errlog,
-				"read returned %zd, errno %d, %s\n",
-				bytes, save_errno, errstr);
-			return 1;
+			const char *fmt = "read returned %zd";
+			int save_errno = Bs_log_errno(errlog, fmt, bytes);
+			return save_errno ? save_errno : 1;
 		}
 		write(fd_to, buf, bytes);
 	}
@@ -94,7 +103,7 @@ int fd_read_write(int fd_from, int fd_to, char *buf, size_t bufsize,
 	return 0;
 }
 
-int strip_backslash_nl_pipe(int fdin, int fdout, FILE *errlog)
+int bs_pipe(bs_pipe_function pfunc, int fdin, int fdout, FILE *errlog)
 {
 	int pipefd[2];
 	pid_t child_pid;
@@ -104,9 +113,9 @@ int strip_backslash_nl_pipe(int fdin, int fdout, FILE *errlog)
 	int pipewrite = pipefd[1];
 
 	if ((child_pid = fork()) == -1) {
-		fprintf(errlog, "%s:%d: ", __FILE__, __LINE__);
-		perror("fork");
-		return 1;
+		const char *fmt = "fork() returned %zd";
+		int save_errno = Bs_log_errno(errlog, fmt, (ssize_t)child_pid);
+		return save_errno ? save_errno : 1;
 	}
 
 	if (child_pid == 0) {
@@ -116,7 +125,7 @@ int strip_backslash_nl_pipe(int fdin, int fdout, FILE *errlog)
 		/* not using the fdout */
 		close(fdout);
 
-		return strip_backslash_newline(fdin, pipewrite, errlog);
+		return pfunc(fdin, pipewrite, errlog);
 	}
 
 	/* not using fdin */
@@ -127,7 +136,7 @@ int strip_backslash_nl_pipe(int fdin, int fdout, FILE *errlog)
 
 	const size_t bufsize = 80;
 	char buf[80];
-	int err2 = fd_read_write(piperead, fdout, buf, bufsize, errlog);
+	int err2 = bs_fd_copy(piperead, fdout, buf, bufsize, errlog);
 
 	int options = 0;
 	int err1 = 0;
@@ -135,45 +144,68 @@ int strip_backslash_nl_pipe(int fdin, int fdout, FILE *errlog)
 	return (err1 || err2) ? 1 : 0;
 }
 
-int main(int argc, char **argv)
+int bs_pipe_paths(bs_pipe_function pfunc, const char *in_path,
+		  const char *out_path, FILE *errlog)
 {
-	const char *in_path = argc > 1 ? argv[1] : NULL;
-	const char *out_path = argc > 2 ? argv[2] : NULL;
-	if (!in_path || !out_path) {
-		fprintf(stderr, "usage %s /path/to/in.c /path/to/out.c.i\n",
-			argv[0]);
-		return 1;
-	}
-
 	int fdin = open(in_path, O_RDONLY);
 	if (fdin < 0) {
-		int save_errno = errno;
-		const char *errstr = strerror(save_errno);
-		fprintf(stderr, "%s:%d: ", __FILE__, __LINE__);
-		fprintf(stderr,
-			"open(\"%s\", O_RDONLY)"
-			" returned %d, errno %d: %s\n",
-			in_path, fdin, save_errno, errstr);
-		return 1;
+		const char *fmt = "open(\"%s\", O_RDONLY) returned %d";
+		int save_errno = Bs_log_errno(errlog, fmt, in_path, fdin);
+		return save_errno ? save_errno : 1;
 	}
 
 	mode_t mode = 0664;
 	int fdout = open(out_path, O_CREAT | O_WRONLY | O_TRUNC, mode);
 	if (fdin < 0) {
-		int save_errno = errno;
-		const char *errstr = strerror(save_errno);
-		fprintf(stderr, "%s:%d: ", __FILE__, __LINE__);
-		fprintf(stderr,
-			"open(\"%s\", O_CREAT|O_WRONLY|O_TRUNC)"
-			"returned %d, errno %d: %s\n",
-			out_path, fdout, save_errno, errstr);
-		return 1;
+		const char *fmt =
+		    "open(\"%s\", O_CREAT|O_WRONLY|O_TRUNC) returned %d";
+		int save_errno = Bs_log_errno(errlog, fmt, out_path, fdout);
+		return save_errno ? save_errno : 1;
 	}
 
-	int err = strip_backslash_nl_pipe(fdin, fdout, stderr);
+	int err = bs_pipe(pfunc, fdin, fdout, errlog);
 
 	/* done with fdout */
 	close(fdout);
 
-	return !!err;
+	return err;
+}
+
+int bs_log_error(int perrno, const char *file, int line, FILE *errlog,
+		 const char *format, ...)
+{
+	fflush(stdout);
+
+	fprintf(errlog, "%s:%d: ", file, line);
+
+	va_list args;
+	va_start(args, format);
+	vfprintf(errlog, format, args);
+	va_end(args);
+
+	if (perrno) {
+		const char *errstr = strerror(perrno);
+		fprintf(errlog, " (errno: %d, %s)", perrno, errstr);
+	}
+
+	fprintf(errlog, "\n");
+
+	return perrno;
+}
+
+int main(int argc, char **argv)
+{
+	const char *in = argc > 1 ? argv[1] : NULL;
+	const char *out = argc > 2 ? argv[2] : NULL;
+	if (!in || !out) {
+		fprintf(stderr, "usage %s /path/to/in /path/to/out\n", argv[0]);
+		return 1;
+	}
+
+	int err = bs_pipe_paths(bs_strip_backslash_newline, in, out, stderr);
+
+	/* if err is a 1-byte value, we can return it raw,
+	 * to avoid a value like 0x0100 looking like SUCCESS
+	 * return EXIT_FAILURE with values larger than 1 byte */
+	return ((err & 0xFF) == err) ? err : EXIT_FAILURE;
 }

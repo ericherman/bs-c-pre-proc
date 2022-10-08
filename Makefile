@@ -107,7 +107,7 @@ coverage: coverage_html/src/bs-cpp.c.gcov.html
 
 tidy:
 	$(LINDENT) \
-		-T FILE -T size_t \
+		-T FILE -T size_t -T ssize_t \
 		src/*.c src/*.h tests/*.c tests/*.h
 
 clean:

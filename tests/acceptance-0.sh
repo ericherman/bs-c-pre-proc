@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2022 Eric Herman <eric@freesa.org>
 
-BS_EXE=$1
+BS_EXE="$@"
 
 if [ "_${BS_EXE}_" == "__" ]; then
 	BS_EXE=build/bs-strip-backslash-nl

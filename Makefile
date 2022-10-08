@@ -96,7 +96,9 @@ check-unit: check-simple-include check-name-from-include check-sane-fprintf
 check-accpetance-0: tests/acceptance-0.sh \
 		debug/bs-strip-backslash-nl \
 		build/bs-strip-backslash-nl
-	$< debug/bs-strip-backslash-nl
+	$< $(VALGRIND_CMD) debug/bs-strip-backslash-nl 2>&1 | tee debug/$@.out
+	bin/valgrind-check debug/$@.out
+	rm debug/$@.out
 	$< build/bs-strip-backslash-nl
 	@echo "SUCCESS! ($@)"
 

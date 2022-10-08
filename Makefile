@@ -37,6 +37,12 @@ endif
 LINDENT=indent -npro -kr -i8 -ts8 -sob -l80 -ss -ncs -cp1 -il0
 # see also: https://www.kernel.org/doc/Documentation/process/coding-style.rst
 
+
+# .SECONDARY with no prerequisites causes all targets to be treated as
+# secondary (i.e., no target is removed because it is considered intermediate).
+# https://www.gnu.org/software/make/manual/html_node/Special-Targets.html
+.SECONDARY:
+
 .PHONY: default
 default: check
 
@@ -55,15 +61,23 @@ debug/bs-cpp: debug/bs-cpp.o src/bs-cpp-main.c
 	mkdir -pv debug
 	$(CC) $(DEBUG_CFLAGS) $^ -o $@
 
-debug/test-util.o: tests/test-util.c tests/test-util.h
+build/bs-strip-backslash-nl: src/bs-strip-backslash-nl.c
 	mkdir -pv debug
+	$(CC) $(BUILD_CFLAGS) $^ -o $@
+
+debug/bs-strip-backslash-nl: src/bs-strip-backslash-nl.c
+	mkdir -pv debug
+	$(CC) $(DEBUG_CFLAGS) $^ -o $@
+
+debug/tests/test-util.o: tests/test-util.c tests/test-util.h
+	mkdir -pv debug/tests
 	$(CC) -c $(DEBUG_CFLAGS) $< -o $@
 
-debug/test-%: debug/bs-cpp.o debug/test-util.o tests/test-%.c
+debug/tests/test-%: debug/bs-cpp.o debug/tests/test-util.o tests/test-%.c
 	$(CC) $(DEBUG_CFLAGS) $^ -o $@
 
 .PHONY: check-%
-check-%: debug/test-%
+check-%: debug/tests/test-%
 	$(VALGRIND_CMD) ./$< 2>&1 | tee debug/$@.out
 	bin/valgrind-check debug/$@.out
 	rm debug/$@.out
@@ -73,10 +87,22 @@ check-%: debug/test-%
 check-unit: check-simple-include check-name-from-include check-sane-fprintf
 	@echo "SUCCESS! ($@)"
 
+.PHONY: check-accpetance-0
+check-accpetance-0: tests/acceptance-0.sh \
+		debug/bs-strip-backslash-nl \
+		build/bs-strip-backslash-nl
+	$< debug/bs-strip-backslash-nl
+	$< build/bs-strip-backslash-nl
+	@echo "SUCCESS! ($@)"
+
+.PHONY: check-accpetance-1
+check-accpetance-1: tests/acceptance-1.sh debug/bs-cpp build/bs-cpp
+	$< debug/bs-cpp
+	$< build/bs-cpp
+	@echo "SUCCESS! ($@)"
+
 .PHONY: check-accpetance
-check-accpetance: build/bs-cpp debug/bs-cpp tests/acceptance-1.sh
-	tests/acceptance-1.sh debug/bs-cpp
-	tests/acceptance-1.sh build/bs-cpp
+check-accpetance: check-accpetance-0 check-accpetance-1
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check
@@ -91,9 +117,12 @@ coverage.info: check
 		--output-file coverage.info
 	ls -l coverage.info
 
-coverage_html/src/bs-cpp.c.gcov.html: coverage.info
+coverage_html/src/index.html: coverage.info
 	mkdir -pv ./coverage_html
 	genhtml coverage.info --output-directory coverage_html
+	ls -l $@
+
+coverage_html/src/bs-cpp.c.gcov.html: coverage_html/src/index.html
 	ls -l $@
 
 check-code-coverage: coverage_html/src/bs-cpp.c.gcov.html
@@ -102,7 +131,7 @@ check-code-coverage: coverage_html/src/bs-cpp.c.gcov.html
 		then true; else false; fi
 	@echo "SUCCESS! ($@)"
 
-coverage: coverage_html/src/bs-cpp.c.gcov.html
+coverage: coverage_html/src/index.html
 	$(BROWSER) $<
 
 tidy:

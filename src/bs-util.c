@@ -8,22 +8,32 @@
 
 #include "bs-util.h"
 
+/* global function pointers for tests to intercept */
+int (*bs_open)(const char *path, int options, ...) = open;
+int (*bs_close)(int fd) = close;
+
+ssize_t (*bs_read)(int fd, void *buf, size_t count) = read;
+ssize_t (*bs_write)(int fd, const void *buf, size_t count) = write;
+
+pid_t (*bs_fork)(void) = fork;
+int (*bs_pipe)(int pipefd[2]) = pipe;
+
 int bs_fd_copy(int fd_from, int fd_to, char *buf, size_t bufsize, FILE *errlog)
 {
 	ssize_t bytes = 0;
-	while ((bytes = read(fd_from, buf, bufsize)) != 0) {
+	while ((bytes = bs_read(fd_from, buf, bufsize)) != 0) {
 		if (bytes < 0) {
 			const char *fmt = "read(%d, buf, %zu) returned %zd";
 			int save_errno =
 			    Bs_log_errno(errlog, fmt, fd_from, bufsize, bytes);
 			return save_errno ? save_errno : 1;
 		}
-		write(fd_to, buf, bytes);
+		bs_write(fd_to, buf, bytes);
 	}
 	return 0;
 }
 
-int bs_pipe(bs_pipe_function *pfunc, int fdin, int fdout, FILE *errlog)
+int bs_pipes(bs_pipe_function *pfunc, int fdin, int fdout, FILE *errlog)
 {
 	pid_t child_pid = 0;
 	int piperead;
@@ -32,12 +42,12 @@ int bs_pipe(bs_pipe_function *pfunc, int fdin, int fdout, FILE *errlog)
 
 	for (size_t i = 0; pfunc[i]; ++i) {
 		int pipefd[2];
-		pipe(pipefd);
+		bs_pipe(pipefd);
 
 		piperead = pipefd[0];
 		pipewrite = pipefd[1];
 
-		if ((child_pid = fork()) == -1) {
+		if ((child_pid = bs_fork()) == -1) {
 			const char *fmt = "fork() number %zu returned -1";
 			int save_errno = Bs_log_errno(errlog, fmt, i);
 			return save_errno ? save_errno : 1;
@@ -45,10 +55,10 @@ int bs_pipe(bs_pipe_function *pfunc, int fdin, int fdout, FILE *errlog)
 
 		if (child_pid == 0) {
 			/* not using "fdout" */
-			close(fdout);
+			bs_close(fdout);
 
 			/* not using the "out" end of pipe */
-			close(piperead);
+			bs_close(piperead);
 
 			/* make my funk the p-funk, I want my funk uncut */
 			bs_pipe_function myfunc = pfunc[i];
@@ -56,10 +66,10 @@ int bs_pipe(bs_pipe_function *pfunc, int fdin, int fdout, FILE *errlog)
 		}
 
 		/* not using incoming */
-		close(incoming);
+		bs_close(incoming);
 
 		/* not using input end of pipe */
-		close(pipewrite);
+		bs_close(pipewrite);
 
 		incoming = piperead;
 	}
@@ -67,8 +77,8 @@ int bs_pipe(bs_pipe_function *pfunc, int fdin, int fdout, FILE *errlog)
 	const size_t bufsize = 80;
 	char buf[80];
 	int err2 = bs_fd_copy(incoming, fdout, buf, bufsize, errlog);
-	close(incoming);
-	close(fdout);
+	bs_close(incoming);
+	bs_close(fdout);
 
 	int options = 0;
 	int err1 = 0;
@@ -79,7 +89,7 @@ int bs_pipe(bs_pipe_function *pfunc, int fdin, int fdout, FILE *errlog)
 int bs_pipe_paths(bs_pipe_function *pfunc, const char *in_path,
 		  const char *out_path, FILE *errlog)
 {
-	int fdin = open(in_path, O_RDONLY);
+	int fdin = bs_open(in_path, O_RDONLY);
 	if (fdin < 0) {
 		const char *fmt = "open(\"%s\", O_RDONLY) returned %d";
 		int save_errno = Bs_log_errno(errlog, fmt, in_path, fdin);
@@ -87,7 +97,7 @@ int bs_pipe_paths(bs_pipe_function *pfunc, const char *in_path,
 	}
 
 	mode_t mode = 0664;
-	int fdout = open(out_path, O_CREAT | O_WRONLY | O_TRUNC, mode);
+	int fdout = bs_open(out_path, O_CREAT | O_WRONLY | O_TRUNC, mode);
 	if (fdin < 0) {
 		const char *fmt =
 		    "open(\"%s\", O_CREAT|O_WRONLY|O_TRUNC) returned %d";
@@ -95,10 +105,10 @@ int bs_pipe_paths(bs_pipe_function *pfunc, const char *in_path,
 		return save_errno ? save_errno : 1;
 	}
 
-	int err = bs_pipe(pfunc, fdin, fdout, errlog);
+	int err = bs_pipes(pfunc, fdin, fdout, errlog);
 
 	/* done with fdout */
-	close(fdout);
+	bs_close(fdout);
 
 	return err;
 }

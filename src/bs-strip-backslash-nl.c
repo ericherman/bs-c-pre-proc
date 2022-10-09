@@ -19,7 +19,7 @@ int bs_strip_backslash_newline(int fd_from, int fd_to, FILE *errlog)
 	while (1) {
 		int skip = 0;
 		size_t read_size = 1;
-		ssize_t bytes = read(fd_from, buf, read_size);
+		ssize_t bytes = bs_read(fd_from, buf, read_size);
 		if (bytes < 0) {
 			const char *fmt = "read(fd, buf, %zu) returned %zd";
 			int save_errno =
@@ -31,7 +31,7 @@ int bs_strip_backslash_newline(int fd_from, int fd_to, FILE *errlog)
 			if (have_backslash) {
 				buf[0] = '\\';
 				buf[1] = '\0';
-				write(fd_to, buf, 1);
+				bs_write(fd_to, buf, 1);
 			}
 			goto bs_strip_backslash_newline_end;
 		}
@@ -44,7 +44,7 @@ int bs_strip_backslash_newline(int fd_from, int fd_to, FILE *errlog)
 			} else {
 				buf[0] = '\\';
 				buf[1] = '\0';
-				write(fd_to, buf, 1);
+				bs_write(fd_to, buf, 1);
 				have_backslash = 0;
 				skip = 0;
 			}
@@ -54,16 +54,16 @@ int bs_strip_backslash_newline(int fd_from, int fd_to, FILE *errlog)
 		} else if (!skip) {
 			buf[0] = c;
 			buf[1] = '\0';
-			write(fd_to, buf, 1);
+			bs_write(fd_to, buf, 1);
 		}
 	}
 
 bs_strip_backslash_newline_end:
 	/* done with "out" end of pipe */
-	close(fd_to);
+	bs_close(fd_to);
 
 	/* done with "fd_from" */
-	close(fd_from);
+	bs_close(fd_from);
 
 	return error;
 }
@@ -83,7 +83,7 @@ int bs_replace_comments(int fd_from, int fd_to, FILE *errlog)
 
 	while (1) {
 		size_t read_size = 1;
-		ssize_t bytes = read(fd_from, buf, read_size);
+		ssize_t bytes = bs_read(fd_from, buf, read_size);
 		if (bytes < 0) {
 			const char *fmt = "read(fd, buf, %zu) returned %zd";
 			int save_errno =
@@ -95,7 +95,7 @@ int bs_replace_comments(int fd_from, int fd_to, FILE *errlog)
 			if (have_slash) {
 				buf[0] = '/';
 				buf[1] = '\0';
-				write(fd_to, buf, 1);
+				bs_write(fd_to, buf, 1);
 			}
 			goto bs_replace_comments_end;
 		}
@@ -114,7 +114,7 @@ int bs_replace_comments(int fd_from, int fd_to, FILE *errlog)
 			}
 			buf[0] = d;
 			buf[1] = '\0';
-			write(fd_to, buf, 1);
+			bs_write(fd_to, buf, 1);
 			have_slash = 0;
 		}
 		if (have_double_slash) {
@@ -138,17 +138,17 @@ int bs_replace_comments(int fd_from, int fd_to, FILE *errlog)
 		      || have_slash_star_star || have_slash_star)) {
 			buf[0] = c;
 			buf[1] = '\0';
-			write(fd_to, buf, 1);
+			bs_write(fd_to, buf, 1);
 		}
 		skip = 0;
 	}
 
 bs_replace_comments_end:
 	/* done with "out" end of pipe */
-	close(fd_to);
+	bs_close(fd_to);
 
 	/* done with "fd_from" */
-	close(fd_from);
+	bs_close(fd_from);
 
 	return error;
 }

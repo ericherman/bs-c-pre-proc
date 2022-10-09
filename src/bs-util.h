@@ -5,6 +5,7 @@
 #define BS_UTIL_H 1
 
 #include <errno.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 

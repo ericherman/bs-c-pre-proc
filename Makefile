@@ -33,6 +33,11 @@ ifneq ($(VALGRIND), 0)
 VALGRIND_CMD=$(shell which valgrind)
 endif
 
+ifneq ($(VALGRIND_CMD),)
+VALGRIND_CMD += --leak-check=full --show-leak-kinds=all
+endif
+
+
 # extracted from https://github.com/torvalds/linux/blob/master/scripts/Lindent
 LINDENT=indent -npro -kr -i8 -ts8 -sob -l80 -ss -ncs -cp1 -il0
 # see also: https://www.kernel.org/doc/Documentation/process/coding-style.rst
@@ -50,7 +55,7 @@ src/bs-cpp.c: src/bs-cpp.h
 src/bs-util.c: src/bs-util.h
 tests/test-util.c: tests/test-util.h
 
-build/bs-cpp: src/bs-cpp.c src/bs-cpp-main.c
+build/bs-cpp: src/bs-cpp.c src/bs-util.c src/bs-cpp-main.c
 	mkdir -pv build
 	$(CC) $(BUILD_CFLAGS) $^ -o $@
 
@@ -62,12 +67,12 @@ debug/bs-util.o: src/bs-util.c
 	mkdir -pv debug
 	$(CC) -c $(DEBUG_CFLAGS) $< -o $@
 
-debug/bs-cpp: debug/bs-cpp.o src/bs-cpp-main.c
+debug/bs-cpp: debug/bs-cpp.o debug/bs-util.o src/bs-cpp-main.c
 	mkdir -pv debug
 	$(CC) $(DEBUG_CFLAGS) $^ -o $@
 
 build/bs-strip-backslash-nl: src/bs-strip-backslash-nl.c src/bs-util.c
-	mkdir -pv debug
+	mkdir -pv build
 	$(CC) $(BUILD_CFLAGS) $^ -o $@
 
 debug/bs-strip-backslash-nl: src/bs-strip-backslash-nl.c debug/bs-util.o
@@ -78,25 +83,29 @@ debug/tests/test-util.o: tests/test-util.c tests/test-util.h
 	mkdir -pv debug/tests
 	$(CC) -c $(DEBUG_CFLAGS) $< -o $@
 
-debug/tests/test-%: debug/bs-cpp.o debug/tests/test-util.o tests/test-%.c
+debug/tests/test-%: debug/bs-cpp.o debug/bs-util.o debug/tests/test-util.o \
+		tests/test-%.c
 	$(CC) $(DEBUG_CFLAGS) $^ -o $@
 
 .PHONY: check-%
 check-%: debug/tests/test-%
-	$(VALGRIND_CMD) ./$< 2>&1 | tee debug/$@.out
+	set -o pipefail \
+		&& $(VALGRIND_CMD) ./$< 2>&1 | tee debug/$@.out
 	bin/valgrind-check debug/$@.out
 	rm debug/$@.out
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check-unit
-check-unit: check-simple-include check-name-from-include check-sane-fprintf
+check-unit: check-simple-include check-name-from-include
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check-accpetance-0
 check-accpetance-0: tests/acceptance-0.sh \
 		debug/bs-strip-backslash-nl \
 		build/bs-strip-backslash-nl
-	$< $(VALGRIND_CMD) debug/bs-strip-backslash-nl 2>&1 | tee debug/$@.out
+	set -o pipefail \
+		&& $< $(VALGRIND_CMD) debug/bs-strip-backslash-nl 2>&1 \
+		| tee debug/$@.out
 	bin/valgrind-check debug/$@.out
 	rm debug/$@.out
 	$< build/bs-strip-backslash-nl

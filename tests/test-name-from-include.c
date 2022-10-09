@@ -13,10 +13,10 @@ unsigned test_name_from_include_basic(void)
 {
 	unsigned failures = 0;
 
-	const size_t buflen = 80 * 24;
+	const size_t bufsize = 80 * 24;
 	char logbuf[80 * 24];
-	memset(logbuf, 0x00, buflen);
-	FILE *log = fmemopen(logbuf, buflen, "w");
+	memset(logbuf, 0x00, bufsize);
+	FILE *log = fmemopen(logbuf, bufsize, "w");
 
 	char buf[80];
 	strncpy(buf, "#include \"foo.h\"\n", 80);
@@ -46,10 +46,10 @@ unsigned test_name_from_include_malformed(void)
 {
 	unsigned failures = 0;
 
-	const size_t buflen = 80 * 24;
+	const size_t bufsize = 80 * 24;
 	char logbuf[80 * 24];
-	memset(logbuf, 0x00, buflen);
-	FILE *log = fmemopen(logbuf, buflen, "w");
+	memset(logbuf, 0x00, bufsize);
+	FILE *log = fmemopen(logbuf, bufsize, "w");
 
 	char buf[80];
 	strncpy(buf, "#include \"malformed.h>\n", 80);

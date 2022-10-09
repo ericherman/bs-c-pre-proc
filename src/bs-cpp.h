@@ -8,7 +8,7 @@
 
 /* prototypes */
 int bs_cpp(int argc, char **argv);
-int bs_preprocess(FILE *in, FILE *out, char *buf, size_t bufsize, FILE *log);
+int bs_preprocess(int fdin, int fdout, char *buf, size_t bufsize, FILE *log);
 
 /* internals for testing
 int bs_include(FILE *out, char *buf, size_t bufsize, size_t ws, FILE *log);

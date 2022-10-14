@@ -23,11 +23,6 @@ FILE *bs_stderr = NULL;
 #define BS_STDERR (bs_stderr ? bs_stderr : stderr)
 
 /* global function pointers for tests to intercept */
-FILE *(*bs_fopen)(const char *restrict path, const char *restrict mode) = fopen;
-int (*bs_fclose)(FILE *stream) = fclose;
-void *(*bs_malloc)(size_t size) = malloc;
-void (*bs_free)(void *ptr) = free;
-void (*bs_exit)(int status) = exit;
 int (*bs_vfprintf)(FILE *restrict stream, const char *restrict format,
 		   va_list ap) = vfprintf;
 

@@ -71,14 +71,6 @@ debug/bs-cpp: debug/bs-cpp.o debug/bs-util.o src/bs-cpp-main.c
 	mkdir -pv debug
 	$(CC) $(DEBUG_CFLAGS) $^ -o $@
 
-build/bs-strip-backslash-nl: src/bs-strip-backslash-nl.c src/bs-util.c
-	mkdir -pv build
-	$(CC) $(BUILD_CFLAGS) $^ -o $@
-
-debug/bs-strip-backslash-nl: src/bs-strip-backslash-nl.c debug/bs-util.o
-	mkdir -pv debug
-	$(CC) $(DEBUG_CFLAGS) $^ -o $@
-
 debug/tests/test-util.o: tests/test-util.c tests/test-util.h
 	mkdir -pv debug/tests
 	$(CC) -c $(DEBUG_CFLAGS) $< -o $@
@@ -100,15 +92,13 @@ check-unit: check-simple-include check-name-from-include
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check-accpetance-0
-check-accpetance-0: tests/acceptance-0.sh \
-		debug/bs-strip-backslash-nl \
-		build/bs-strip-backslash-nl
+check-accpetance-0: tests/acceptance-0.sh debug/bs-cpp build/bs-cpp
 	set -o pipefail \
-		&& $< $(VALGRIND_CMD) debug/bs-strip-backslash-nl 2>&1 \
+		&& $< $(VALGRIND_CMD) debug/bs-cpp 2>&1 \
 		| tee debug/$@.out
 	bin/valgrind-check debug/$@.out
 	rm debug/$@.out
-	$< build/bs-strip-backslash-nl
+	$< build/bs-cpp
 	@echo "SUCCESS! ($@)"
 
 .PHONY: check-accpetance-1

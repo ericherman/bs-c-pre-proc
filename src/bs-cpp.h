@@ -8,18 +8,6 @@
 
 /* prototypes */
 int bs_cpp(int argc, char **argv);
-int bs_preprocess(int fdin, int fdout, char *buf, size_t bufsize, FILE *log);
-
-/* internals for testing
-int bs_include(FILE *out, char *buf, size_t bufsize, size_t ws, FILE *log);
-
-extern FILE *bs_stdin;
-extern FILE *bs_stdout;
-extern FILE *bs_stderr;
-extern FILE *(*bs_fopen)(const char *restrict path, const char *restrict mode);
-extern int (*bs_fclose)(FILE *stream);
-extern void *(*bs_malloc)(size_t size);
-extern void (*bs_free)(void *ptr);
-*/
+int bs_c_pre_proc(int fdin, int fdout, FILE *log);
 
 #endif /* BS_CPP */

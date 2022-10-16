@@ -9,16 +9,21 @@ if [ "_${VALGRIND_OUTPUT}_" == "__" ]; then
 fi
 
 if [ ! -f ${VALGRIND_OUTPUT} ]; then
-	ls ${VALGRIND_OUTPUT}
+	ls -l ${VALGRIND_OUTPUT}
 	exit 1
 fi
 
-if [ $(grep -c 'definitely lost' $VALGRIND_OUTPUT) -ne 0 ]; then
-	cat $VALGRIND_OUTPUT
+if [ $(grep -c 'definitely lost:\s*[1-9]' $VALGRIND_OUTPUT) -ne 0 ]; then
+	grep -B1 -A5 'definitely lost:\t*\s*[1-9]' $VALGRIND_OUTPUT
 	exit 1
 fi
 
-if [ $(grep -c 'probably lost' $VALGRIND_OUTPUT) -ne 0 ]; then
-	cat $VALGRIND_OUT
+if [ $(grep -c 'indirectly lost:\s*[1-9]' $VALGRIND_OUTPUT) -ne 0 ]; then
+	grep -B2 -A4 'indirectly lost:\t*\s*[1-9]' $VALGRIND_OUTPUT
+	exit 1
+fi
+
+if [ $(grep -c 'possibly lost:\s*[1-9]' $VALGRIND_OUTPUT) -ne 0 ]; then
+	grep -B3 -A3 'possibly lost:\t*\s*[1-9]' $VALGRIND_OUTPUT
 	exit 1
 fi

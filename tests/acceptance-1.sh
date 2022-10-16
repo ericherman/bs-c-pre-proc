@@ -26,6 +26,7 @@ EOF
 
 cat << EOF > bar.c.expected
 int foo(void);
+
 int main(void)
 {
 	return foo();
@@ -34,6 +35,6 @@ EOF
 
 $BS_CPP bar.c bar.c.i
 
-diff -u bar.c.i bar.c.expected
+diff -uw bar.c.expected bar.c.i
 
 rm -f foo.h bar.c bar.c.expected bar.c.i

@@ -37,7 +37,7 @@ unsigned test_name_from_include_basic(void)
 	fflush(log);
 	fclose(log);
 	log = NULL;
-	failures += Check((strcmp(logbuf, "") == 0), "errorlong: %s\n", logbuf);
+	failures += Check((strcmp(logbuf, "") == 0), "error log: %s\n", logbuf);
 
 	return failures;
 }
@@ -71,7 +71,7 @@ unsigned test_name_from_include_malformed(void)
 	fflush(log);
 	fclose(log);
 	log = NULL;
-	failures += Check(strstr(logbuf, "error"), "errorlong: %s\n", logbuf);
+	failures += Check(strstr(logbuf, "error"), "error log: %s\n", logbuf);
 
 	return failures;
 }

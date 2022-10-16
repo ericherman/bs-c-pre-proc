@@ -5,7 +5,7 @@
 BS_EXE="$@"
 
 if [ "_${BS_EXE}_" == "__" ]; then
-	BS_EXE=build/bs-strip-backslash-nl
+	BS_EXE=build/bs-cpp
 fi
 
 set -e

@@ -29,17 +29,21 @@ void (*bs_exit)(int status) = exit;
 
 int bs_fd_copy(int fd_from, int fd_to, char *buf, size_t bufsize, FILE *errlog)
 {
+	int err = 0;
 	ssize_t bytes = 0;
 	while ((bytes = bs_read(fd_from, buf, bufsize)) != 0) {
 		if (bytes < 0) {
 			const char *fmt = "read(%d, buf, %zu) returned %zd";
 			int save_errno =
 			    Bs_log_errno(errlog, fmt, fd_from, bufsize, bytes);
-			return save_errno ? save_errno : 1;
+			err = save_errno ? save_errno : 1;
+			goto bs_fd_copy_end;
 		}
 		bs_write(fd_to, buf, bytes);
 	}
-	return 0;
+
+bs_fd_copy_end:
+	return err;
 }
 
 int bs_pipes(struct pipe_func_s *funcs, int fdin, int fdout, FILE *errlog)
@@ -105,12 +109,13 @@ int bs_pipes(struct pipe_func_s *funcs, int fdin, int fdout, FILE *errlog)
 	snprintf(name, 80, "parent finish incoming");
 	Bs_close_fd(incoming, name, errlog);
 
-	snprintf(name, 80, "parent finish fdout");
-	Bs_close_fd(fdout, name, errlog);
+	// snprintf(name, 80, "parent finish fdout");
+	// Bs_close_fd(fdout, name, errlog);
 
 	int options = 0;
 	int err1 = 0;
 	waitpid(child_pid, &err1, options);
+
 	return (err1 > err2) ? err1 : err2;
 }
 
@@ -133,7 +138,7 @@ int bs_open_rw(const char *path, mode_t mode, int *err, FILE *log,
 	       const char *file, int line)
 {
 	if (!mode) {
-		mode = 0664;
+		mode = 0600;
 	}
 	int fdout = bs_open(path, O_CREAT | O_WRONLY | O_TRUNC, mode);
 	// fprintf(stderr, "bs_open_rw %s %d: %s == fd: %d\n", file, line, path,
